@@ -1,0 +1,68 @@
+# Build output
+bin/
+obj/
+[Bb]uild/
+[Bb]uilds/
+dist/
+publish/
+
+# BepInEx / game-generated files
+BepInEx/
+!BepInEx/plugins/
+!BepInEx/plugins/**/
+doorstop_config.ini
+
+# Unity generated files
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Uu]ser[Ss]ettings/
+MemoryCaptures/
+Recordings/
+
+# Unity generated metadata / crash files
+*.pidb
+*.pdb
+*.mdb
+*.opendb
+*.userprefs
+sysinfo.txt
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# C# / MSBuild
+*.csproj.user
+*.DotSettings.user
+TestResult.xml
+*.trx
+
+# NuGet
+packages/
+*.nupkg
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.orig
+
+# Local game/dependency files
+Game/
+Plugins/
