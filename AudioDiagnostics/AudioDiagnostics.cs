@@ -12,23 +12,27 @@ using UnityEngine;
 [BepInPlugin(
 "com.cheez.unbeatable.audiotest",
 "UNBEATABLE Audio Diagnostics",
-"3.9.0"
+"3.11.0"
 )]
 public class AudioDiagnostics : BaseUnityPlugin
 {
-// Number of DSP buffers is not exposed; 2 (double buffering) is what
-// both the ASIO and WASAPI paths were validated with.
-private const int BufferCount = 2;
-
 private static int TargetBufferLength = 64;
-private static int TargetBufferCount = BufferCount;
+private static int TargetBufferCount = 4;
 
 private static ConfigEntry<bool> ConfigUseASIO;
 private static ConfigEntry<string> ConfigASIODevice;
 private static ConfigEntry<int> ConfigASIOBufferSize;
+private static ConfigEntry<int> ConfigASIOBufferCount;
 private static ConfigEntry<int> ConfigWASAPIBufferSize;
+private static ConfigEntry<int> ConfigWASAPIBufferCount;
+
+private static ConfigEntry<bool> ConfigLimiterEnabled;
+private static ConfigEntry<float> ConfigLimiterCeilingDb;
+private static ConfigEntry<float> ConfigLimiterReleaseMs;
 
 private static bool asioForced;
+private static bool limiterInstalled;
+private static bool limiterInstallAttempted;
 
 private float nextCheck;
 private const float CheckInterval = 2.0f;
@@ -37,7 +41,7 @@ private void Awake()
 {
     Logger.LogInfo("==============================================");
     Logger.LogInfo("=== UNBEATABLE FMOD PLATFORM PATCH ===========");
-    Logger.LogInfo("=== Version 3.9.0 ==============================");
+    Logger.LogInfo("=== Version 3.11.0 =============================");
     Logger.LogInfo("==============================================");
 
     ConfigUseASIO = Config.Bind(
@@ -72,6 +76,19 @@ private void Awake()
         "128 -> 192 -> 256)."
     );
 
+    ConfigASIOBufferCount = Config.Bind(
+        "ASIO",
+        "BufferCount",
+        4,
+        "Number of DSP buffers used when ASIO is active and its probe " +
+        "succeeds. The game's own default is 4; we previously forced " +
+        "this down to 2 to save latency, which can starve FMOD under " +
+        "heavy songs and cause crunch/underruns even at a decent " +
+        "buffer size. Raise this (e.g. 3 or 4) if you're still getting " +
+        "crunchiness. Each extra buffer adds one BufferSize's worth of " +
+        "latency."
+    );
+
     ConfigWASAPIBufferSize = Config.Bind(
         "WASAPI",
         "BufferSize",
@@ -79,6 +96,47 @@ private void Awake()
         "DSP buffer length in samples used when UseASIO is false, or " +
         "when the ASIO probe fails and the game falls back to its " +
         "normal (WASAPI) output driver."
+    );
+
+    ConfigWASAPIBufferCount = Config.Bind(
+        "WASAPI",
+        "BufferCount",
+        4,
+        "Number of DSP buffers used in the fallback (non-ASIO) case. " +
+        "The game's own default is 4."
+    );
+
+    ConfigLimiterEnabled = Config.Bind(
+        "Limiter",
+        "Enabled",
+        true,
+        "Attach FMOD's built-in brick-wall limiter to the master " +
+        "channel group. ASIO exclusive mode bypasses Windows' audio " +
+        "engine, which normally soft-clips/attenuates peaks for you; " +
+        "without it, songs whose mix already exceeds 0 dBFS will " +
+        "sound harshly crunchy. This limiter restores a safety ceiling " +
+        "so the fix isn't 'shrink the buffer and hope'. Recommended " +
+        "to leave on even in WASAPI/fallback mode."
+    );
+
+    ConfigLimiterCeilingDb = Config.Bind(
+        "Limiter",
+        "CeilingDb",
+        -0.3f,
+        "Master limiter output ceiling in dB, range -12 to 0. Lower " +
+        "values leave more headroom (safer, very slightly quieter); " +
+        "0 only stops sample values from exceeding full scale, it " +
+        "won't catch inter-sample peaks."
+    );
+
+    ConfigLimiterReleaseMs = Config.Bind(
+        "Limiter",
+        "ReleaseMs",
+        50.0f,
+        "Master limiter release time in milliseconds, range 1-1000. " +
+        "Shorter reacts faster to transients but can pump/distort on " +
+        "sustained loud passages; longer is smoother but may hold " +
+        "gain reduction slightly longer after a peak."
     );
 
     try
@@ -94,7 +152,7 @@ private void Awake()
             asioActive = TryEnableAsio(
                 harmony,
                 ConfigASIOBufferSize.Value,
-                BufferCount
+                ConfigASIOBufferCount.Value
             );
         }
         else
@@ -108,7 +166,9 @@ private void Awake()
             ? ConfigASIOBufferSize.Value
             : ConfigWASAPIBufferSize.Value;
 
-        TargetBufferCount = BufferCount;
+        TargetBufferCount = asioActive
+            ? ConfigASIOBufferCount.Value
+            : ConfigWASAPIBufferCount.Value;
 
         PatchProperty(
             harmony,
@@ -603,6 +663,12 @@ private void CheckFMOD()
 
         FMOD.System system = RuntimeManager.CoreSystem;
 
+        if (!limiterInstallAttempted)
+        {
+            limiterInstallAttempted = true;
+            InstallMasterLimiter(system);
+        }
+
         RESULT result = system.getDSPBufferSize(
             out uint bufferLength,
             out int bufferCount
@@ -647,11 +713,102 @@ private void CheckFMOD()
         {
             CheckOutputDriver(system);
         }
+
+        Logger.LogInfo(
+            $"Master limiter installed: {limiterInstalled}"
+        );
     }
     catch (Exception ex)
     {
         Logger.LogError(
             $"FMOD verification failed: {ex}"
+        );
+    }
+}
+
+private void InstallMasterLimiter(FMOD.System system)
+{
+    if (!ConfigLimiterEnabled.Value)
+    {
+        Logger.LogInfo(
+            "Master limiter disabled via config."
+        );
+
+        return;
+    }
+
+    try
+    {
+        RESULT result = system.getMasterChannelGroup(
+            out ChannelGroup master
+        );
+
+        if (result != RESULT.OK)
+        {
+            Logger.LogWarning(
+                $"getMasterChannelGroup failed: {result}. " +
+                "Master limiter not installed."
+            );
+
+            return;
+        }
+
+        result = system.createDSPByType(DSP_TYPE.LIMITER, out DSP limiter);
+
+        if (result != RESULT.OK)
+        {
+            Logger.LogWarning(
+                $"createDSPByType(LIMITER) failed: {result}. " +
+                "Master limiter not installed."
+            );
+
+            return;
+        }
+
+        float ceilingDb = ConfigLimiterCeilingDb.Value;
+        float releaseMs = ConfigLimiterReleaseMs.Value;
+
+        limiter.setParameterFloat(
+            (int)DSP_LIMITER.CEILING,
+            ceilingDb
+        );
+
+        limiter.setParameterFloat(
+            (int)DSP_LIMITER.RELEASETIME,
+            releaseMs
+        );
+
+        limiter.setParameterFloat(
+            (int)DSP_LIMITER.MAXIMIZERGAIN,
+            0.0f
+        );
+
+        result = master.addDSP(
+            CHANNELCONTROL_DSP_INDEX.TAIL,
+            limiter
+        );
+
+        if (result != RESULT.OK)
+        {
+            Logger.LogWarning(
+                $"master.addDSP(limiter) failed: {result}. " +
+                "Master limiter not installed."
+            );
+
+            return;
+        }
+
+        limiterInstalled = true;
+
+        Logger.LogInfo(
+            $">>> Master limiter installed: ceiling={ceilingDb} dB, " +
+            $"release={releaseMs} ms <<<"
+        );
+    }
+    catch (Exception ex)
+    {
+        Logger.LogError(
+            $"Failed to install master limiter: {ex}"
         );
     }
 }
