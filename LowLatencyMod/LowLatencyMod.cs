@@ -10,11 +10,11 @@ using HarmonyLib;
 using UnityEngine;
 
 [BepInPlugin(
-"com.cheez.unbeatable.audiotest",
-"UNBEATABLE Audio Diagnostics",
-"3.11.0"
+"io.github.mark-renzi.lowlatencymod",
+"UNBEATABLE Low Latency Mod",
+"1.0.0"
 )]
-public class AudioDiagnostics : BaseUnityPlugin
+public class LowLatencyMod : BaseUnityPlugin
 {
 private static int TargetBufferLength = 64;
 private static int TargetBufferCount = 4;
@@ -40,8 +40,8 @@ private const float CheckInterval = 2.0f;
 private void Awake()
 {
     Logger.LogInfo("==============================================");
-    Logger.LogInfo("=== UNBEATABLE FMOD PLATFORM PATCH ===========");
-    Logger.LogInfo("=== Version 3.11.0 =============================");
+    Logger.LogInfo("=== UNBEATABLE LOW LATENCY MOD ================");
+    Logger.LogInfo("=== Version 1.0.0 ==============================");
     Logger.LogInfo("==============================================");
 
     ConfigUseASIO = Config.Bind(
@@ -142,7 +142,7 @@ private void Awake()
     try
     {
         var harmony = new Harmony(
-            "com.cheez.unbeatable.audiotest"
+            "io.github.mark-renzi.lowlatencymod"
         );
 
         bool asioActive = false;
@@ -255,7 +255,7 @@ private bool TryEnableAsio(Harmony harmony, int bufferLength, int bufferCount)
         getOutputType,
         prefix: new HarmonyMethod(
             AccessTools.Method(
-                typeof(AudioDiagnostics),
+                typeof(LowLatencyMod),
                 nameof(GetOutputTypePrefix)
             )
         )
@@ -284,7 +284,7 @@ private bool TryEnableAsio(Harmony harmony, int bufferLength, int bufferCount)
             setOutput,
             postfix: new HarmonyMethod(
                 AccessTools.Method(
-                    typeof(AudioDiagnostics),
+                    typeof(LowLatencyMod),
                     nameof(SetOutputPostfix)
                 )
             )
@@ -578,7 +578,7 @@ private void PatchProperty(
     );
 
     MethodInfo prefix = AccessTools.Method(
-        typeof(AudioDiagnostics),
+        typeof(LowLatencyMod),
         propertyName == "DSPBufferLength"
             ? nameof(DSPBufferLengthPrefix)
             : nameof(DSPBufferCountPrefix)
@@ -626,14 +626,14 @@ private static bool DSPBufferCountPrefix(
     return false;
 }
 
-private static AudioDiagnostics Instance;
+private static LowLatencyMod Instance;
 
 private void Start()
 {
     Instance = this;
 
     Logger.LogInfo(
-        "AudioDiagnostics.Start() — FMOD initialization should " +
+        "LowLatencyMod.Start() — FMOD initialization should " +
         "already have occurred or be occurring."
     );
 }
