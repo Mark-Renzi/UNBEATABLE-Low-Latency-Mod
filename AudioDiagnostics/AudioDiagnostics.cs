@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
 using BepInEx;
+using BepInEx.Configuration;
 using FMOD;
 using FMODUnity;
 using HarmonyLib;
@@ -10,12 +12,23 @@ using UnityEngine;
 [BepInPlugin(
 "com.cheez.unbeatable.audiotest",
 "UNBEATABLE Audio Diagnostics",
-"3.6.0"
+"3.9.0"
 )]
 public class AudioDiagnostics : BaseUnityPlugin
 {
-private const int TargetBufferLength = 64;
-private const int TargetBufferCount = 2;
+// Number of DSP buffers is not exposed; 2 (double buffering) is what
+// both the ASIO and WASAPI paths were validated with.
+private const int BufferCount = 2;
+
+private static int TargetBufferLength = 64;
+private static int TargetBufferCount = BufferCount;
+
+private static ConfigEntry<bool> ConfigUseASIO;
+private static ConfigEntry<string> ConfigASIODevice;
+private static ConfigEntry<int> ConfigASIOBufferSize;
+private static ConfigEntry<int> ConfigWASAPIBufferSize;
+
+private static bool asioForced;
 
 private float nextCheck;
 private const float CheckInterval = 2.0f;
@@ -24,14 +37,78 @@ private void Awake()
 {
     Logger.LogInfo("==============================================");
     Logger.LogInfo("=== UNBEATABLE FMOD PLATFORM PATCH ===========");
-    Logger.LogInfo("=== Version 3.6.0 =============================");
+    Logger.LogInfo("=== Version 3.9.0 ==============================");
     Logger.LogInfo("==============================================");
+
+    ConfigUseASIO = Config.Bind(
+        "ASIO",
+        "UseASIO",
+        true,
+        "Try to force FMOD to output through ASIO instead of WASAPI " +
+        "for lower audio latency. A throwaway FMOD system probes ASIO " +
+        "first; if the probe fails, the game automatically falls back " +
+        "to its normal output driver at the WASAPI buffer size below."
+    );
+
+    ConfigASIODevice = Config.Bind(
+        "ASIO",
+        "Device",
+        "",
+        "Search string used to pick the ASIO driver by name " +
+        "(case-insensitive substring match). Leave empty to use " +
+        "FMOD's default (driver 0). After first launch, check the log " +
+        "for lines like '[ASIO probe] Driver N: \"name\"' to see the " +
+        "exact device names available on this machine, then paste " +
+        "(part of) the one you want here."
+    );
+
+    ConfigASIOBufferSize = Config.Bind(
+        "ASIO",
+        "BufferSize",
+        128,
+        "DSP buffer length in samples used when ASIO is active and its " +
+        "probe succeeds. Lower = less latency but more risk of " +
+        "crackling/underruns. If audio is crunchy, raise this (e.g. " +
+        "128 -> 192 -> 256)."
+    );
+
+    ConfigWASAPIBufferSize = Config.Bind(
+        "WASAPI",
+        "BufferSize",
+        64,
+        "DSP buffer length in samples used when UseASIO is false, or " +
+        "when the ASIO probe fails and the game falls back to its " +
+        "normal (WASAPI) output driver."
+    );
 
     try
     {
         var harmony = new Harmony(
             "com.cheez.unbeatable.audiotest"
         );
+
+        bool asioActive = false;
+
+        if (ConfigUseASIO.Value)
+        {
+            asioActive = TryEnableAsio(
+                harmony,
+                ConfigASIOBufferSize.Value,
+                BufferCount
+            );
+        }
+        else
+        {
+            Logger.LogInfo(
+                "UseASIO disabled via config; staying on WASAPI."
+            );
+        }
+
+        TargetBufferLength = asioActive
+            ? ConfigASIOBufferSize.Value
+            : ConfigWASAPIBufferSize.Value;
+
+        TargetBufferCount = BufferCount;
 
         PatchProperty(
             harmony,
@@ -47,7 +124,8 @@ private void Awake()
 
         Logger.LogInfo(
             $"FMOD platform values forced to " +
-            $"{TargetBufferLength} × {TargetBufferCount}."
+            $"{TargetBufferLength} × {TargetBufferCount} " +
+            $"({(asioActive ? "ASIO" : "fallback/original output")})."
         );
 
         Logger.LogInfo(
@@ -61,6 +139,348 @@ private void Awake()
         Logger.LogError(
             $"Patch installation failed: {ex}"
         );
+    }
+}
+
+private bool TryEnableAsio(Harmony harmony, int bufferLength, int bufferCount)
+{
+    Logger.LogInfo(
+        $"Probing ASIO availability ({bufferLength} × {bufferCount}) " +
+        "on a throwaway FMOD core system..."
+    );
+
+    bool probeOk = ProbeAsio(bufferLength, bufferCount, out string report);
+
+    foreach (string line in report.Split('\n'))
+    {
+        string trimmed = line.TrimEnd('\r');
+
+        if (trimmed.Length > 0)
+        {
+            Logger.LogInfo($"  [ASIO probe] {trimmed}");
+        }
+    }
+
+    if (!probeOk)
+    {
+        Logger.LogWarning(
+            $"ASIO probe failed at {bufferLength} × {bufferCount}. " +
+            "Leaving FMOD's output driver untouched so the game keeps " +
+            "working normally."
+        );
+
+        return false;
+    }
+
+    Logger.LogInfo(
+        "ASIO probe succeeded. Patching Platform.GetOutputType() " +
+        "to force ASIO."
+    );
+
+    MethodInfo getOutputType = AccessTools.Method(
+        typeof(Platform),
+        "GetOutputType"
+    );
+
+    if (getOutputType == null)
+    {
+        Logger.LogError(
+            "Could not find Platform.GetOutputType(); cannot force ASIO."
+        );
+
+        return false;
+    }
+
+    harmony.Patch(
+        getOutputType,
+        prefix: new HarmonyMethod(
+            AccessTools.Method(
+                typeof(AudioDiagnostics),
+                nameof(GetOutputTypePrefix)
+            )
+        )
+    );
+
+    Logger.LogInfo(
+        "Patched Platform.GetOutputType() -> forces ASIO."
+    );
+
+    MethodInfo setOutput = AccessTools.Method(
+        typeof(FMOD.System),
+        nameof(FMOD.System.setOutput)
+    );
+
+    if (setOutput == null)
+    {
+        Logger.LogWarning(
+            "Could not find FMOD.System.setOutput(); driver selection " +
+            "and result logging for the real FMOD system will be " +
+            "skipped, but ASIO output is still forced."
+        );
+    }
+    else
+    {
+        harmony.Patch(
+            setOutput,
+            postfix: new HarmonyMethod(
+                AccessTools.Method(
+                    typeof(AudioDiagnostics),
+                    nameof(SetOutputPostfix)
+                )
+            )
+        );
+
+        Logger.LogInfo(
+            "Patched FMOD.System.setOutput() -> selects configured " +
+            "ASIO driver and logs the result."
+        );
+    }
+
+    asioForced = true;
+    return true;
+}
+
+private static bool GetOutputTypePrefix(ref OUTPUTTYPE __result)
+{
+    __result = OUTPUTTYPE.ASIO;
+    return false;
+}
+
+private static void SetOutputPostfix(
+    ref FMOD.System __instance,
+    OUTPUTTYPE output,
+    RESULT __result
+)
+{
+    if (output != OUTPUTTYPE.ASIO)
+        return;
+
+    if (Instance != null)
+    {
+        Instance.Logger.LogInfo(
+            $"FMOD.System.setOutput(ASIO) -> {__result}"
+        );
+    }
+
+    if (__result != RESULT.OK)
+        return;
+
+    RESULT numResult = __instance.getNumDrivers(out int numDrivers);
+
+    if (numResult != RESULT.OK || numDrivers <= 0)
+    {
+        if (Instance != null)
+        {
+            Instance.Logger.LogWarning(
+                $"getNumDrivers -> {numResult}, count={numDrivers}. " +
+                "No ASIO driver selection performed."
+            );
+        }
+
+        return;
+    }
+
+    var sb = new StringBuilder();
+    int driverIndex = ResolveDriverIndex(__instance, numDrivers, sb);
+
+    if (Instance != null && sb.Length > 0)
+    {
+        foreach (string line in sb.ToString().Split('\n'))
+        {
+            string trimmed = line.TrimEnd('\r');
+
+            if (trimmed.Length > 0)
+            {
+                Instance.Logger.LogInfo($"  [ASIO driver] {trimmed}");
+            }
+        }
+    }
+
+    if (driverIndex < 0)
+        return;
+
+    RESULT setResult = __instance.setDriver(driverIndex);
+
+    if (Instance != null)
+    {
+        Instance.Logger.LogInfo(
+            $"FMOD.System.setDriver({driverIndex}) -> {setResult}"
+        );
+    }
+}
+
+private static int ResolveDriverIndex(
+    FMOD.System system,
+    int numDrivers,
+    StringBuilder sb
+)
+{
+    string nameFilter = ConfigASIODevice?.Value;
+
+    for (int i = 0; i < numDrivers; i++)
+    {
+        RESULT r = system.getDriverInfo(
+            i,
+            out string name,
+            256,
+            out Guid guid,
+            out int systemRate,
+            out SPEAKERMODE speakerMode,
+            out int speakerModeChannels
+        );
+
+        sb.AppendLine(
+            r == RESULT.OK
+                ? $"Driver {i}: \"{name}\" ({systemRate} Hz, " +
+                  $"{speakerMode}/{speakerModeChannels}ch)"
+                : $"Driver {i}: getDriverInfo failed ({r})"
+        );
+    }
+
+    if (!string.IsNullOrEmpty(nameFilter))
+    {
+        for (int i = 0; i < numDrivers; i++)
+        {
+            RESULT r = system.getDriverInfo(
+                i,
+                out string name,
+                256,
+                out Guid guid,
+                out int systemRate,
+                out SPEAKERMODE speakerMode,
+                out int speakerModeChannels
+            );
+
+            if (
+                r == RESULT.OK &&
+                name != null &&
+                name.IndexOf(
+                    nameFilter,
+                    StringComparison.OrdinalIgnoreCase
+                ) >= 0
+            )
+            {
+                sb.AppendLine(
+                    $"Selected driver {i} by name filter " +
+                    $"\"{nameFilter}\"."
+                );
+
+                return i;
+            }
+        }
+
+        sb.AppendLine(
+            $"No ASIO driver matched device filter \"{nameFilter}\"."
+        );
+    }
+
+    sb.AppendLine(
+        "Leaving driver selection at FMOD's default (no explicit " +
+        "setDriver call)."
+    );
+
+    return -1;
+}
+
+private static bool ProbeAsio(
+    int bufferLength,
+    int bufferCount,
+    out string report
+)
+{
+    var sb = new StringBuilder();
+    FMOD.System testSystem = default;
+    bool created = false;
+    bool initialized = false;
+
+    try
+    {
+        RESULT result = Factory.System_Create(out testSystem);
+        sb.AppendLine($"System_Create: {result}");
+
+        if (result != RESULT.OK)
+        {
+            report = sb.ToString();
+            return false;
+        }
+
+        created = true;
+
+        result = testSystem.setOutput(OUTPUTTYPE.ASIO);
+        sb.AppendLine($"setOutput(ASIO): {result}");
+
+        if (result != RESULT.OK)
+        {
+            report = sb.ToString();
+            return false;
+        }
+
+        result = testSystem.getNumDrivers(out int numDrivers);
+        sb.AppendLine($"getNumDrivers: {result}, count={numDrivers}");
+
+        if (result != RESULT.OK || numDrivers <= 0)
+        {
+            report = sb.ToString();
+            return false;
+        }
+
+        int driverIndex = ResolveDriverIndex(testSystem, numDrivers, sb);
+
+        if (driverIndex >= 0)
+        {
+            result = testSystem.setDriver(driverIndex);
+            sb.AppendLine($"setDriver({driverIndex}): {result}");
+
+            if (result != RESULT.OK)
+            {
+                report = sb.ToString();
+                return false;
+            }
+        }
+
+        result = testSystem.setSoftwareFormat(0, SPEAKERMODE.STEREO, 0);
+        sb.AppendLine($"setSoftwareFormat: {result}");
+
+        result = testSystem.setDSPBufferSize(
+            (uint)bufferLength,
+            bufferCount
+        );
+
+        sb.AppendLine(
+            $"setDSPBufferSize({bufferLength}x{bufferCount}): {result}"
+        );
+
+        result = testSystem.init(32, INITFLAGS.NORMAL, IntPtr.Zero);
+        sb.AppendLine($"init: {result}");
+
+        if (result != RESULT.OK)
+        {
+            report = sb.ToString();
+            return false;
+        }
+
+        initialized = true;
+
+        report = sb.ToString();
+        return true;
+    }
+    catch (Exception ex)
+    {
+        sb.AppendLine($"Exception: {ex}");
+        report = sb.ToString();
+        return false;
+    }
+    finally
+    {
+        if (initialized)
+        {
+            testSystem.close();
+        }
+
+        if (created)
+        {
+            testSystem.release();
+        }
     }
 }
 
@@ -222,11 +642,68 @@ private void CheckFMOD()
                 $"NOT {TargetBufferLength} × {TargetBufferCount}."
             );
         }
+
+        if (asioForced)
+        {
+            CheckOutputDriver(system);
+        }
     }
     catch (Exception ex)
     {
         Logger.LogError(
             $"FMOD verification failed: {ex}"
+        );
+    }
+}
+
+private void CheckOutputDriver(FMOD.System system)
+{
+    RESULT outputResult = system.getOutput(out OUTPUTTYPE activeOutput);
+
+    if (outputResult != RESULT.OK)
+    {
+        Logger.LogWarning(
+            $"getOutput failed: {outputResult}"
+        );
+
+        return;
+    }
+
+    if (activeOutput == OUTPUTTYPE.ASIO)
+    {
+        RESULT driverResult = system.getDriver(out int activeDriver);
+
+        string driverName = "<unknown>";
+
+        if (driverResult == RESULT.OK)
+        {
+            RESULT infoResult = system.getDriverInfo(
+                activeDriver,
+                out string name,
+                256,
+                out Guid guid,
+                out int systemRate,
+                out SPEAKERMODE speakerMode,
+                out int speakerModeChannels
+            );
+
+            if (infoResult == RESULT.OK)
+            {
+                driverName = $"\"{name}\" ({systemRate} Hz)";
+            }
+        }
+
+        Logger.LogInfo(
+            $">>> SUCCESS: FMOD OUTPUT IS ASIO (driver " +
+            $"{(driverResult == RESULT.OK ? activeDriver.ToString() : "?")} " +
+            $"= {driverName}) <<<"
+        );
+    }
+    else
+    {
+        Logger.LogWarning(
+            $"ASIO was requested but FMOD's active output is " +
+            $"{activeOutput}."
         );
     }
 }
