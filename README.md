@@ -78,8 +78,8 @@ Settings live in `BepInEx/config/io.github.mark-renzi.lowlatencymod.cfg` (create
 | ---------- | ----------- | ------- | ---------------------------------------------------------------------|
 | `[ASIO]`   | `UseASIO`   | `true`  | Master switch for trying ASIO at all.                                |
 | `[ASIO]`   | `Device`    | `""`    | Substring match against ASIO driver names (see log for exact names). |
-| `[ASIO]`   | `BufferSize`| `128`   | DSP buffer length in samples. Lower = less latency, more risk of crackle. |
-| `[ASIO]`   | `BufferCount`| `4`    | Number of DSP buffers. Raise if you get crunch/underruns.            |
+| `[ASIO]`   | `BufferSize`| `16`    | DSP buffer length in samples. Lower = less latency, more risk of crackle. |
+| `[ASIO]`   | `BufferCount`| `4`    | Number of DSP buffers. If you get crunch/underruns, raise this before raising `BufferSize` — it costs less added latency per step. |
 | `[WASAPI]` | `BufferSize`| `64`    | Buffer length used when ASIO is off or fails its probe.              |
 | `[WASAPI]` | `BufferCount`| `4`    | Buffer count used when ASIO is off or fails its probe.               |
 | `[Limiter]`| `Enabled`   | `true`  | Master-bus limiter to prevent clipping. Recommended to leave on.     |

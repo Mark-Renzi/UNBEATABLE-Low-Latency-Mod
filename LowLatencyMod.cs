@@ -69,11 +69,12 @@ private void Awake()
     ConfigASIOBufferSize = Config.Bind(
         "ASIO",
         "BufferSize",
-        128,
+        16,
         "DSP buffer length in samples used when ASIO is active and its " +
         "probe succeeds. Lower = less latency but more risk of " +
-        "crackling/underruns. If audio is crunchy, raise this (e.g. " +
-        "128 -> 192 -> 256)."
+        "crackling/underruns. If audio is crunchy, try raising " +
+        "BufferCount first (it costs less latency per step); only raise " +
+        "this (e.g. 16 -> 32 -> 64 -> 128 -> ... 1024) if that's not enough."
     );
 
     ConfigASIOBufferCount = Config.Bind(
