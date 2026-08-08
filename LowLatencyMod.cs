@@ -80,7 +80,7 @@ private void Awake()
     ConfigASIOBufferCount = Config.Bind(
         "ASIO",
         "BufferCount",
-        2
+        2,
         "Number of DSP buffers used when ASIO is active and its probe " +
         "succeeds. The game's own default is 4; I previously forced " +
         "this down to 2 to save latency, which can starve FMOD under " +
