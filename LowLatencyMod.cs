@@ -80,9 +80,9 @@ private void Awake()
     ConfigASIOBufferCount = Config.Bind(
         "ASIO",
         "BufferCount",
-        4,
+        2
         "Number of DSP buffers used when ASIO is active and its probe " +
-        "succeeds. The game's own default is 4; we previously forced " +
+        "succeeds. The game's own default is 4; I previously forced " +
         "this down to 2 to save latency, which can starve FMOD under " +
         "heavy songs and cause crunch/underruns even at a decent " +
         "buffer size. Raise this (e.g. 3 or 4) if you're still getting " +
@@ -110,14 +110,13 @@ private void Awake()
     ConfigLimiterEnabled = Config.Bind(
         "Limiter",
         "Enabled",
-        true,
+        false,
         "Attach FMOD's built-in brick-wall limiter to the master " +
         "channel group. ASIO exclusive mode bypasses Windows' audio " +
         "engine, which normally soft-clips/attenuates peaks for you; " +
         "without it, songs whose mix already exceeds 0 dBFS will " +
-        "sound harshly crunchy. This limiter restores a safety ceiling " +
-        "so the fix isn't 'shrink the buffer and hope'. Recommended " +
-        "to leave on even in WASAPI/fallback mode."
+        "crackle. This limiter restores a safety ceiling. Recommended " +
+        "to enable when you can't remove crackle with buffer size + count"
     );
 
     ConfigLimiterCeilingDb = Config.Bind(
