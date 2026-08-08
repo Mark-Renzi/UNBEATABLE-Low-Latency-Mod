@@ -3,14 +3,23 @@
 A [BepInEx](https://github.com/BepInEx/BepInEx) plugin for [UNBEATABLE](https://store.steampowered.com/) that
 reduces FMOD audio latency.
 
+
+Are you sick of the audio feedback in UNBEATABLE being super delayed? Do you miss sound effects because you turned them off to make the game playable?
+I (MIGHT) have a solution for you!
+
+What does it do?
 - Forces FMOD to output through **ASIO** instead of WASAPI when a working ASIO driver is available (automatically falls back to WASAPI if it isn't, so audio never breaks).
 - Shrinks FMOD's DSP buffer size/count for a much shorter output pipeline.
 - Adds a brick-wall **limiter** on FMOD's master bus, since ASIO exclusive mode bypasses Windows' audio engine (which normally hides clipping in songs that already peak above 0 dBFS).
 
+Here's an example video of what you can expect! I recorded this with mic sound hearing my keyboard and speakers so fair warning the recording is a little nasty.
+
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/lR-WPMsbCRo/0.jpg)](https://www.youtube.com/watch?v=lR-WPMsbCRo)
+
 ## Requirements
 
 - **BepInEx 5.4.x (x64)** installed for UNBEATABLE. If you don't have it yet, install it manually from the [BepInEx releases page](https://github.com/BepInEx/BepInEx/releases) (grab the `BepInEx_x64` build matching the game's Unity/Mono runtime), extract it into your UNBEATABLE game folder (next to `UNBEATABLE.exe`), then launch the game once so it generates its `BepInEx/plugins`, `BepInEx/config`, etc. folders.
-- Optional: an **ASIO driver** for your audio interface. Not required, the mod probes ASIO on startup and safely falls back to WASAPI if none is found or it fails.
+- Optional: an **ASIO driver** for your audio interface. Not required, but is the ideal scenario. If you audio interface supports ASIO, you will be able to nearly eliminate all audio latency. On startup the mod probes ASIO on startup and safely falls back to WASAPI if none is found or it fails. If you're not sure if your audio interface has ASIO, it likely doesn't, but here's a list I found referencing a mod for another game called rocksmith [expand the list, the rest of the instructions are for a different game so ignore](https://github.com/mdias/rs_asio#audio-interfaces-reported-to-work-well) and ignore all of the ones that need ASIO4ALL.
 
 ## Installation
 
@@ -21,7 +30,7 @@ reduces FMOD audio latency.
 
 ## Verifying it worked
 
-Check `UNBEATABLE/BepInEx/LogOutput.log` after launching. Look for:
+Check `BepInEx/LogOutput.log` after launching. Look for:
 
 ```
 FMOD platform values forced to <length> × <count> (ASIO).
@@ -38,7 +47,7 @@ If you have more than one ASIO driver installed (e.g. an audio interface plus so
 To pick a specific one:
 
 1. Launch the game once with the mod installed, then close it.
-2. Open `UNBEATABLE/BepInEx/LogOutput.log` in a text editor and find the probe results. Search for
+2. Open `BepInEx/LogOutput.log` in a text editor and find the probe results. Search for
    `[ASIO probe] Driver`. You'll see a line per driver on your system, e.g.:
    ```
    [ASIO probe] Driver 0: "Ableton Move" (48000 Hz, STEREO/2ch)
@@ -46,7 +55,7 @@ To pick a specific one:
    [ASIO probe] Driver 2: "Realtek ASIO" (48000 Hz, STEREO/2ch)
    ```
 3. Note the name of the device you actually want to use.
-4. Open `UNBEATABLE/BepInEx/config/io.github.mark-renzi.lowlatencymod.cfg` and set `Device` under `[ASIO]` to part of that name (case-insensitive, just needs to be a unique substring), e.g.:
+4. Open `BepInEx/config/io.github.mark-renzi.lowlatencymod.cfg` and set `Device` under `[ASIO]` to part of that name (case-insensitive, just needs to be a unique substring), e.g.:
    ```
    Device = MOTU
    ```
@@ -77,7 +86,7 @@ If audio sounds crunchy on specific loud songs, that could be clipping, not late
 
 ## Uninstalling
 
-Delete the `UNBEATABLE/BepInEx/plugins/LowLatencyMod/` folder.
+Delete the `BepInEx/plugins/LowLatencyMod/` folder.
 
 ## Building from source
 
