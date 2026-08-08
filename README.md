@@ -3,9 +3,18 @@
 A [BepInEx](https://github.com/BepInEx/BepInEx) plugin for [UNBEATABLE](https://store.steampowered.com/) that
 reduces FMOD audio latency.
 
+
+Are you sick of the audio feedback in UNBEATABLE being super delayed? Do you miss sound effects because you turned them off to make the game playable?
+I (MIGHT) have a solution for you!
+
+What does it do?
 - Forces FMOD to output through **ASIO** instead of WASAPI when a working ASIO driver is available (automatically falls back to WASAPI if it isn't, so audio never breaks).
 - Shrinks FMOD's DSP buffer size/count for a much shorter output pipeline.
 - Adds a brick-wall **limiter** on FMOD's master bus, since ASIO exclusive mode bypasses Windows' audio engine (which normally hides clipping in songs that already peak above 0 dBFS).
+
+Here's an example video of what you can expect! I recorded this with mic sound hearing my keyboard and speakers so fair warning the recording is a little nasty.
+
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/lR-WPMsbCRo/0.jpg)](https://www.youtube.com/watch?v=lR-WPMsbCRo)
 
 ## Requirements
 
