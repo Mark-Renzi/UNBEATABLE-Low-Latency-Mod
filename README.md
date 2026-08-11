@@ -21,6 +21,17 @@ Here's an example video of what you can expect! I recorded this with mic sound h
 - **BepInEx 5.4.x (x64)** installed for UNBEATABLE. If you don't have it yet, install it manually from the [BepInEx releases page](https://github.com/BepInEx/BepInEx/releases) (grab the `BepInEx_x64` build matching the game's Unity/Mono runtime), extract it into your UNBEATABLE game folder (next to `UNBEATABLE.exe`), then launch the game once so it generates its `BepInEx/plugins`, `BepInEx/config`, etc. folders.
 - Optional: an **ASIO driver** for your audio interface. Not required, but is the ideal scenario. If you audio interface supports ASIO, you will be able to nearly eliminate all audio latency. On startup the mod probes ASIO on startup and safely falls back to WASAPI if none is found or it fails. If you're not sure if your audio interface has ASIO, it likely doesn't, but here's a list I found referencing a mod for another game called rocksmith [expand the list, the rest of the instructions are for a different game so ignore](https://github.com/mdias/rs_asio#audio-interfaces-reported-to-work-well) and ignore all of the ones that need ASIO4ALL.
 
+## Audio Interfaces reported to work well
+
+<details>
+<summary>Click to expand</summary>
+
+- MOTU M2
+- You can add to this list! Open an issue to let me know please!
+
+</details>
+
+
 ## Installation
 
 1. Make sure BepInEx is installed (see above) and you've launched the game at least once with it.
