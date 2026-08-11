@@ -8,9 +8,8 @@ Are you sick of the audio feedback in UNBEATABLE being super delayed? Do you mis
 I (MIGHT) have a solution for you!
 
 What does it do?
-- Forces FMOD to output through **ASIO** instead of WASAPI when a working ASIO driver is available (automatically falls back to WASAPI if it isn't, so audio never breaks).
-- Shrinks FMOD's DSP buffer size/count for a much shorter output pipeline.
-- Adds a brick-wall **limiter** on FMOD's master bus, since ASIO exclusive mode bypasses Windows' audio engine (which normally hides clipping in songs that already peak above 0 dBFS).
+- It (tries to) force FMOD to output through **ASIO** instead of WASAPI when a working ASIO driver is available (falling back to WASAPI if it fails).
+- Regardless of whether or not ASIO works, it can lower the DSP buffer size and count (much more with ASIO).
 
 Here's an example video of what you can expect! I recorded this with mic sound hearing my keyboard and speakers so fair warning the recording is a little nasty.
 
@@ -18,10 +17,10 @@ Here's an example video of what you can expect! I recorded this with mic sound h
 
 ## Requirements
 
-- **BepInEx 5.4.x (x64)** installed for UNBEATABLE. If you don't have it yet, install it manually from the [BepInEx releases page](https://github.com/BepInEx/BepInEx/releases) (grab the `BepInEx_x64` build matching the game's Unity/Mono runtime), extract it into your UNBEATABLE game folder (next to `UNBEATABLE.exe`), then launch the game once so it generates its `BepInEx/plugins`, `BepInEx/config`, etc. folders.
-- Optional: an **ASIO driver** for your audio interface. Not required, but is the ideal scenario. If you audio interface supports ASIO, you will be able to nearly eliminate all audio latency. On startup the mod probes ASIO on startup and safely falls back to WASAPI if none is found or it fails. If you're not sure if your audio interface has ASIO, it likely doesn't, but here's a list I found referencing a mod for another game called rocksmith [expand the list, the rest of the instructions are for a different game so ignore](https://github.com/mdias/rs_asio#audio-interfaces-reported-to-work-well) and ignore all of the ones that need ASIO4ALL.
+- **BepInEx 5.4.x (x64)** installed for UNBEATABLE. If you don't have it yet, install it manually from the [BepInEx releases page](https://github.com/BepInEx/BepInEx/releases) (BepInEx_win_x64_5.4.x.zip), extract it into your UNBEATABLE game folder (so there's a `BepInEx/` folder and `winhttp.dll` next to `UNBEATABLE.exe`), then launch the game once so it generates its `BepInEx/plugins`, `BepInEx/config`, etc. folders.
+- An **ASIO driver** for your audio interface. The mod can help a little without it... but it can pretty much entirely remove latency with ASIO. If you're not sure if your audio interface has ASIO, it likely doesn't, but here's a list I found referencing a mod for another game called rocksmith [expand the list, the rest of the instructions are for a different game so ignore](https://github.com/mdias/rs_asio#audio-interfaces-reported-to-work-well) and ignore all of the ones that need ASIO4ALL.
 
-## Audio Interfaces reported to work well
+## Audio Interfaces reported to work well for THIS mod
 
 <details>
 <summary>Click to expand</summary>
@@ -34,7 +33,7 @@ Here's an example video of what you can expect! I recorded this with mic sound h
 
 ## Installation
 
-1. Make sure BepInEx is installed (see above) and you've launched the game at least once with it.
+1. Make sure BepInEx is installed (see [requirements](#requirements) above).
 2. Download `UNBEATABLE-Low-Latency-Mod-vX.Y.Z-manual.zip` from the releases.
 3. Extract it directly into your UNBEATABLE game folder (the one containing `UNBEATABLE.exe` and the `BepInEx` folder). It will merge straight into `BepInEx/plugins/LowLatencyMod/`.
 4. Launch the game.
@@ -44,13 +43,12 @@ Here's an example video of what you can expect! I recorded this with mic sound h
 Check `BepInEx/LogOutput.log` after launching. Look for:
 
 ```
-FMOD platform values forced to <length> × <count> (ASIO).
+FMOD platform values forced to <length> x <count> (ASIO).
 ...
 >>> SUCCESS: FMOD OUTPUT IS ASIO (driver N = "Your Device" (48000 Hz)) <<<
->>> Master limiter installed: ceiling=-0.3 dB, release=50 ms <<<
 ```
 
-If ASIO isn't available on your machine, you'll instead see the probe fail and the log will say it's staying on the fallback/WASAPI settings — that's expected behavior, not an error.
+If ASIO isn't available on your machine, you'll instead see the probe fail and the log will say it's staying on WASAPI... boo lame.
 
 ## Finding your ASIO device
 
@@ -77,23 +75,7 @@ To pick a specific one:
 
 If `Device` doesn't match any enumerated driver, the log will say so and fall back to FMOD's default choice (usually driver 0) rather than failing outright.
 
-## Configuration
-
-Settings live in `BepInEx/config/io.github.mark-renzi.lowlatencymod.cfg` (created after first launch).
-
-| Section    | Key         | Default | Notes                                                                 |
-| ---------- | ----------- | ------- | ---------------------------------------------------------------------|
-| `[ASIO]`   | `UseASIO`   | `true`  | Master switch for trying ASIO at all.                                |
-| `[ASIO]`   | `Device`    | `""`    | Substring match against ASIO driver names (see log for exact names). |
-| `[ASIO]`   | `BufferSize`| `16`    | DSP buffer length in samples. Lower = less latency, more risk of crackle. |
-| `[ASIO]`   | `BufferCount`| `2`    | Number of DSP buffers. If you get crunch/underruns, raise this before raising `BufferSize` because it costs less added latency per step. I've never tried above 4 but I like to push for 2. |
-| `[WASAPI]` | `BufferSize`| `64`    | Buffer length used when ASIO is off or fails its probe.              |
-| `[WASAPI]` | `BufferCount`| `4`    | Buffer count used when ASIO is off or fails its probe.               |
-| `[Limiter]`| `Enabled`   | `true`  | Master-bus limiter to prevent clipping. Recommended to leave on.     |
-| `[Limiter]`| `CeilingDb` | `-0.3`  | Output ceiling in dB, range -12 to 0.                                |
-| `[Limiter]`| `ReleaseMs` | `50`    | Limiter release time in ms, range 1-1000.                            |
-
-If audio sounds crunchy on specific loud songs, that could be clipping, not latency. Try lowering `CeilingDb` a bit further (e.g. `-1.0`) before touching buffer sizes.
+If the audio is crunchy... settings live in `BepInEx/config/io.github.mark-renzi.lowlatencymod.cfg` (created after first launch) and they all have their own explanations but you should probably increase buffer count to 4 and raise buffer size a bit.
 
 ## Uninstalling
 
@@ -107,4 +89,4 @@ Requires the .NET SDK. `LowLatencyMod.csproj` references game/BepInEx DLLs via a
 dotnet build LowLatencyMod.csproj -c Release
 ```
 
-Or run `./package.ps1` to build and produce the release zip in `dist/`.
+`./package.ps1` will build and produce the release zip in `dist/`.
