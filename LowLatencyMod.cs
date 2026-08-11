@@ -12,7 +12,7 @@ using UnityEngine;
 [BepInPlugin(
 "io.github.mark-renzi.lowlatencymod",
 "UNBEATABLE Low Latency Mod",
-"1.0.0"
+"1.0.1"
 )]
 public class LowLatencyMod : BaseUnityPlugin
 {

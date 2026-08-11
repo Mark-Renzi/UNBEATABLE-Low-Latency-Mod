@@ -6,9 +6,6 @@
 
 $ErrorActionPreference = "Stop"
 
-# PowerShell 5.1's Compress-Archive writes zip entries with backslash path
-# separators, which breaks extraction on non-Windows tools. Build the zip by
-# hand with forward slashes instead.
 function New-ZipFromDirectory {
     param(
         [Parameter(Mandatory)] [string]$SourceDir,
