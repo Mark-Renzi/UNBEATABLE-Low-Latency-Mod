@@ -52,7 +52,7 @@ If ASIO isn't available on your machine, you'll instead see the probe fail and t
 
 ## Finding your ASIO device
 
-If you have more than one ASIO driver installed (e.g. an audio interface plus something like ASIO4ALL), the mod defaults to whichever one FMOD picks first, which may not be the one you want.
+If you have more than one ASIO driver installed, the mod defaults to whichever one FMOD picks first, which may not be the one you want.
 To pick a specific one:
 
 1. Launch the game once with the mod installed, then close it.
