@@ -25,6 +25,7 @@ Here's an example video of what you can expect! I recorded this with mic sound h
 <details>
 <summary>Click to expand</summary>
 
+- Focusrite Vocaster One [Thanks o800!](https://github.com/Mark-Renzi/UNBEATABLE-Low-Latency-Mod/issues/1)
 - MOTU M2
 - You can add to this list! Open an issue to let me know please!
 
