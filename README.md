@@ -78,9 +78,60 @@ If `Device` doesn't match any enumerated driver, the log will say so and fall ba
 
 If the audio is crunchy... settings live in `BepInEx/config/io.github.mark-renzi.lowlatencymod.cfg` (created after first launch) and they all have their own explanations but you should probably increase buffer count to 4 and raise buffer size a bit.
 
+
 ## Uninstalling
 
 Delete the `BepInEx/plugins/LowLatencyMod/` folder.
+
+## Installation on Linux with PipeASIO
+
+1. Move a copy of the Proton 9 into a folder within `~/.steam/root/compatibilitytools.d`
+2. Edit (or add) `compatibilitytool.vdf` within that folder:
+```
+...
+
+   "display_name" "UNBEATABLE Proton 9"
+...
+```
+3. Edit "require_tool_appid" in `toolmanifest.vdf` to "4183110"
+4. Grab [PipeASIO](https://github.com/M0n7y5/pipeasio/releases/tag/v1.4.3), extract `lib/wine` to 
+`~/.steam/root/compatibilitytools.d/<Custom Proton 9 folder name>/files/lib/wine` (Merge if asked)
+5. Run 
+```
+WINEPREFIX="</path/to>/steamapps/compdata/2240620/pfx" \
+WINEDLLPATH=~/.steam/root/compatibilitytools.d/<Custom Proton 9 folder name>/files/lib64/wine:~/.steam/root/compatibilitytools.d/<Custom Proton 9 folder name>/files/lib/wine
+~/.steam/root/compatibilitytools.d/<Custom Proton 9 folder name>/files/bin/wine64 regsvr32 /s pipeasio64.dll
+```
+6. Check your install with  
+```
+WINEPREFIX="</path/to>/steamapps/compdata/2240620/pfx" \
+WINEDLLPATH=~/.steam/root/compatibilitytools.d/<Custom Proton 9 folder name>/files/lib64/wine:~/.steam/root/compatibilitytools.d/<Custom Proton 9 folder name>/files/lib/wine
+~/.steam/root/compatibilitytools.d/<Custom Proton 9 folder name>/files/bin/wine64 reg query 'HKLM\Software\ASIO\PipeASIO'
+```
+7. Install BepInEx into the UNBEATABLE install folder
+8. Right click on UNBEATABLE -> Properties -> General -> Launch Options, add `WINEDLLOVERRIDES="winhttp=n,b" %command%`, then launch the game to generate the BepInEx files
+9. Install the the UNBEATABLE Low Latency Mod into the UNBEATABLE install's `BepInEx/` folder
+9. Right click on UNBEATABLE -> Properties -> Compatibility -> Check "Force the use of a specific Steam Play compatability tool" -> Select "UNBEATABLE Proton 9"
+10. Add `WINEDLLOVERRIDES="winhttp=n,b PIPEASIO_NUMBER_INPUTS=0 PIPEASIO_NUMBER_OUTPUTS=2 PIPEASIO_PREFERRED_BUFFERSIZE=64 %command%` to your launch options
+11. Edit `BepInEx/config/io.github.mark-renzi.lowlatencymod.cfg` to  `BufferSize=64` and `BufferCount=2` (PipeASIO forces these settings)
+12. (If on Wayland) Add `PROTON_ENABLED_WAYLAND=1` to your launch options
+
+## Uninstalling on Linux
+
+1. Remove all launch options
+2. Delete the `BepInEx/plugins/LowLatencyMod/` folder
+3. (Optional) Delete the custom Proton 9 from `~/.steam/root/compatibilitytools.d/` and restart Steam
+
+## Audio Interfaces tested on Linux
+
+<details>
+<summary>Click to expand</summary>
+
+- Apple USB-C 3.5mm Adapter
+- Apollo Twin X via [OpenApollo](https://github.com/rolotrealanis98/open-apollo)
+   - Occasional glitches, but largely playable
+
+</details>
 
 ## Building from source
 
